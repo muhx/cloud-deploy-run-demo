@@ -10,6 +10,7 @@ spec:
   template:
     metadata:
       annotations:
+        autoscaling.knative.dev/minScale: '0'
         autoscaling.knative.dev/maxScale: '3'
         run.googleapis.com/vpc-access-egress: all-traffic
         run.googleapis.com/network-interfaces: '[{"network":"vpc-net","subnetwork":"subnet-iow","tags":["cloud-deploy-run-demo-prd"]}]'

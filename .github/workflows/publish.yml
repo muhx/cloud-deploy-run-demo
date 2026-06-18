@@ -5,6 +5,16 @@ on:
     branches: [main]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      custom_tag:
+        description: "Extra image tag to apply (optional, e.g. staging)"
+        required: false
+        type: string
+      push:
+        description: "Push to Artifact Registry (uncheck for a build-only dry run)"
+        required: false
+        type: boolean
+        default: true
 
 # Required for Workload Identity Federation (keyless auth to GCP).
 permissions:
@@ -26,6 +36,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud
+        # Skip auth on a manual build-only dry run.
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
         uses: google-github-actions/auth@v2
         with:
           # Set as repository Variables. WIF provider format:
@@ -34,32 +46,55 @@ jobs:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Configure Docker for Artifact Registry
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
         run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Compute image path
+      - name: Compute image path and tags
         id: meta
+        env:
+          CUSTOM_TAG: ${{ inputs.custom_tag }}
         run: |
-          echo "image=${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
-          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          IMAGE="${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${IMAGE_NAME}"
+          SHA="$(git rev-parse --short HEAD)"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+
+          # Always tag with the short SHA and latest; add the manual custom tag if provided.
+          {
+            echo "tags<<EOF"
+            echo "${IMAGE}:${SHA}"
+            echo "${IMAGE}:latest"
+            if [ -n "${CUSTOM_TAG}" ]; then echo "${IMAGE}:${CUSTOM_TAG}"; fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          # Push unless this is a manual build-only dry run.
+          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
           build-args: |
             COMMIT_SHA=${{ steps.meta.outputs.sha }}
-          tags: |
-            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha }}
-            ${{ steps.meta.outputs.image }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Summary
+        env:
+          PUSHED: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+          CUSTOM_TAG: ${{ inputs.custom_tag }}
         run: |
-          echo "### Published image" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PUSHED" = "true" ]; then
+            echo "### Published image" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Built image (dry run — not pushed)" >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "- \`${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`${{ steps.meta.outputs.image }}:latest\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$CUSTOM_TAG" ]; then
+            echo "- \`${{ steps.meta.outputs.image }}:${CUSTOM_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+          fi

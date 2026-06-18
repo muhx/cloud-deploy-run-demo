@@ -1,0 +1,10 @@
+# Files uploaded as the Cloud Deploy release source (--source=.).
+# Cloud Deploy only needs skaffold.yaml + svc/*.yaml, so keep this lean.
+.git
+.github
+node_modules
+.next
+out
+*.tsbuildinfo
+npm-debug.log
+.DS_Store

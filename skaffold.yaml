@@ -1,0 +1,15 @@
+apiVersion: skaffold/v3alpha1
+kind: Config
+metadata:
+  name: muhx-cloud-deploy-run-demo
+profiles:
+- name: staging
+  manifests:
+    rawYaml:
+    - ./svc/deploy-stg.yaml
+- name: production
+  manifests:
+    rawYaml:
+    - ./svc/deploy-prd.yaml
+deploy:
+  cloudrun: {}

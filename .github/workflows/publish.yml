@@ -31,6 +31,9 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      sha: ${{ steps.meta.outputs.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -98,3 +101,53 @@ jobs:
           if [ -n "$CUSTOM_TAG" ]; then
             echo "- \`${{ steps.meta.outputs.image }}:${CUSTOM_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    # Deploy on main pushes, v* tags, or a manual run with push enabled.
+    # Skips on a manual build-only dry run (nothing was published).
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GAR_LOCATION: ${{ vars.GAR_LOCATION }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      # Must match clouddeploy.yaml (pipeline name) and the `image:` placeholder
+      # used in svc/deploy-stg.yaml and svc/deploy-prd.yaml.
+      PIPELINE: muhx-cloud-deploy-run-demo-pipeline
+      IMAGE_PLACEHOLDER: cloud-deploy-run-demo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Create Cloud Deploy release
+        env:
+          IMAGE: ${{ needs.publish.outputs.image }}
+          SHA: ${{ needs.publish.outputs.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        # skaffold.yaml lives in the repo root and references ./svc/*.yaml,
+        # so the release source is the repo root (.). node_modules/.next are
+        # excluded via .gcloudignore.
+        run: |
+          RELEASE="rel-${SHA}-${RUN_NUMBER}"
+          gcloud deploy releases create "$RELEASE" \
+            --project="$GCP_PROJECT_ID" \
+            --region="$GAR_LOCATION" \
+            --delivery-pipeline="$PIPELINE" \
+            --source=. \
+            --images="${IMAGE_PLACEHOLDER}=${IMAGE}:${SHA}"
+
+          echo "### Cloud Deploy release" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Pipeline: \`${PIPELINE}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Release: \`${RELEASE}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`${IMAGE}:${SHA}\`" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,40 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: cloud-deploy-run-demo-stg
+  annotations:
+    run.googleapis.com/ingress: internal-and-cloud-load-balancing
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '3'
+        run.googleapis.com/vpc-access-egress: all-traffic
+        run.googleapis.com/network-interfaces: '[{"network":"vpc-net","subnetwork":"subnet-iow","tags":["cloud-deploy-run-demo-stg"]}]'
+        run.googleapis.com/startup-cpu-boost: 'false'
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      serviceAccountName: demo-cr-runner@id-rd-sa-muhamad-rohman.iam.gserviceaccount.com
+      containers:
+      - name: cloud-deploy-run-demo
+        image: cloud-deploy-run-demo
+        args:
+        - node
+        - server.js
+        ports:
+        - name: http1
+          containerPort: 3000
+        env:
+        - name: VARIABLE_TEST
+          value: test_variable
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 1Gi
+        startupProbe:
+          timeoutSeconds: 240
+          periodSeconds: 240
+          failureThreshold: 1
+          tcpSocket:
+            port: 3000

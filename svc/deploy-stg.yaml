@@ -3,7 +3,9 @@ kind: Service
 metadata:
   name: cloud-deploy-run-demo-stg
   annotations:
-    run.googleapis.com/ingress: internal-and-cloud-load-balancing
+    # Accept traffic from the internet; IAP enforces authentication in front.
+    run.googleapis.com/ingress: all
+    run.googleapis.com/iap-enabled: 'true'
 spec:
   template:
     metadata:

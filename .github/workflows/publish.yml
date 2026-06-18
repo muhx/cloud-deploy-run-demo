@@ -40,10 +40,10 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
         uses: google-github-actions/auth@v2
         with:
-          # Set as repository Variables. WIF provider format:
+          # Direct Workload Identity Federation — no service account impersonation.
+          # WIF provider format:
           # projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Configure Docker for Artifact Registry
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}

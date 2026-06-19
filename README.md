@@ -14,18 +14,18 @@ The app itself is a minimal **Next.js 16** "Hello World" that also displays the 
  git push (main / v*)               GitHub Actions
         │                    ┌─────────────────────────────┐
         └───────────────────▶│ publish: build + push image │
-                             │ deploy:  create CD release   │
+                             │ deploy:  create CD release  │
                              └──────────────┬──────────────┘
                                             │ (keyless: Direct WIF)
-                  ┌─────────────────────────▼──────────────────────────┐
-                  │              Google Cloud Deploy                    │
-                  │   pipeline: muhx-cloud-deploy-run-demo-pipeline     │
-                  │                                                     │
-                  │   ┌──────────┐   approval    ┌─────────────────┐    │
+                  ┌─────────────────────────▼────────────────────────────┐
+                  │              Google Cloud Deploy                     │
+                  │   pipeline: muhx-cloud-deploy-run-demo-pipeline      │
+                  │                                                      │
+                  │   ┌──────────┐   approval    ┌──────────────────┐    │
                   │   │ staging  │──────────────▶│ production       │    │
                   │   │ (auto)   │   gate        │ canary 50→75→100 │    │
                   │   └────┬─────┘               └────────┬─────────┘    │
-                  └────────┼─────────────────────────────┼──────────────┘
+                  └────────┼──────────────────────────────┼──────────────┘
                            ▼                              ▼
                     Cloud Run (stg)               Cloud Run (prd)
                     ingress: all                  ingress: all

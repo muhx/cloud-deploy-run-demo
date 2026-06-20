@@ -154,12 +154,26 @@ gcloud projects add-iam-policy-binding "$PROJECT" \
 gcloud projects add-iam-policy-binding "$PROJECT" \
   --member="$PRINCIPAL" --role="roles/clouddeploy.releaser" --condition=None
 
-# Create + write the Cloud Deploy source-staging bucket on first release
-gcloud projects add-iam-policy-binding "$PROJECT" \
-  --member="$PRINCIPAL" --role="roles/storage.admin" --condition=None
+# Cloud Deploy stages each release's source in a bucket named
+# "<PROJECT_ID>_clouddeploy". Pre-create it here so the CI principal never needs
+# project-wide storage admin just to have the bucket auto-created on first release.
+export STAGING_BUCKET="${PROJECT}_clouddeploy"
+gcloud storage buckets create "gs://${STAGING_BUCKET}" \
+  --project="$PROJECT" --location="$REGION" \
+  --uniform-bucket-level-access --public-access-prevention
+
+# Least privilege: grant the WIF principal access to THAT ONE bucket only —
+# objectAdmin to upload the source tarball, bucketViewer for the bucket-metadata
+# read the upload performs (objectAdmin alone lacks storage.buckets.get).
+# This replaces project-wide roles/storage.admin, which would have granted full
+# control of every bucket in the project.
+gcloud storage buckets add-iam-policy-binding "gs://${STAGING_BUCKET}" \
+  --member="$PRINCIPAL" --role="roles/storage.objectAdmin"
+gcloud storage buckets add-iam-policy-binding "gs://${STAGING_BUCKET}" \
+  --member="$PRINCIPAL" --role="roles/storage.bucketViewer"
 ```
 
-> `--condition=None` is required when the project IAM policy already contains conditional bindings (otherwise `add-iam-policy-binding` refuses to run non-interactively).
+> `--condition=None` is required when the project IAM policy already contains conditional bindings (otherwise `add-iam-policy-binding` refuses to run non-interactively). The bucket-level bindings above target a brand-new bucket with no conditional bindings, so they don't need it.
 
 ### 5. Create the Cloud Run runtime service account
 
@@ -327,7 +341,7 @@ Production always waits for manual approval before the canary rollout.
 
 **`gcloud beta services identity create` hangs / errors as "not interactive"** — Prefix with `CLOUDSDK_CORE_DISABLE_PROMPTS=1`.
 
-**Release fails to upload source** — The WIF principal needs `roles/storage.admin` (the default `deploy-artifacts` bucket is created on first release).
+**Release fails to upload source** — The CI principal needs write access to the Cloud Deploy source-staging bucket (`<PROJECT_ID>_clouddeploy`). Pre-create that bucket and grant the principal `roles/storage.objectAdmin` + `roles/storage.bucketViewer` on it (step 4) — no project-wide `roles/storage.admin` required. If you skipped pre-creating the bucket, the first release will fail because the scoped principal can't create buckets (by design).
 
 **Production rollout stuck** — It's waiting for approval. Approve via the Cloud Deploy console or `gcloud deploy rollouts approve`.
 
